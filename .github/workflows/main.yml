@@ -1,0 +1,63 @@
+# CTTi - Aliga v7.0.0 | Compila la interfaz y genera ctti-aliga-v7.0.0.tar.gz para "Import app" de Foundry.
+# Este workflow es solo para este paquete: manifest.yml esta en la raiz del repositorio.
+name: Build CTTi Aliga v7.0.0
+
+on:
+  workflow_dispatch:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Comprobar estructura
+        run: |
+          for f in manifest.yml functions/devices-fn/main.py ui/pages/dashboard/package.json ui/pages/dashboard/src/main.jsx; do
+            test -f "$f" || { echo "FALTA: $f (los archivos deben estar en la raiz del repositorio)"; exit 1; }
+          done
+          ls
+
+      - name: Instalar Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalar pnpm 9
+        run: npm install -g pnpm@9
+
+      - name: Instalar dependencias de la interfaz
+        working-directory: ui/pages/dashboard
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Compilar la interfaz
+        working-directory: ui/pages/dashboard
+        run: pnpm build
+
+      - name: Comprobar que esta compilada
+        run: |
+          test -s ui/pages/dashboard/src/dist/index.html
+          grep -q "liga" ui/pages/dashboard/src/dist/index.html
+          if grep -q "SIN COMPILAR" ui/pages/dashboard/src/dist/index.html; then echo "dist sigue siendo el marcador"; exit 1; fi
+          ls -la ui/pages/dashboard/src/dist/assets
+
+      - name: Empaquetar para Foundry
+        run: tar -czf ctti-aliga-v7.0.0.tar.gz --exclude=node_modules manifest.yml app_docs functions logscale ui
+
+      - name: Comprobar el paquete
+        run: |
+          tar -tzf ctti-aliga-v7.0.0.tar.gz | head -5
+          test "$(tar -tzf ctti-aliga-v7.0.0.tar.gz | head -1)" = "manifest.yml"
+
+      - name: Guardar el artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctti-aliga-v7.0.0
+          path: ctti-aliga-v7.0.0.tar.gz
+          if-no-files-found: error
